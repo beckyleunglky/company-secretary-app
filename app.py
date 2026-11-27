@@ -13,6 +13,12 @@ APP_PIN = os.environ.get("APP_PIN", "5678")
 app = Flask(__name__)
 WRITE_LOCK = threading.Lock()
 PENDING_ACTIONS = {}
+CHAT_MEMORY = {}
+
+def push_chat(uid, role, txt):
+    hist = CHAT_MEMORY.setdefault(uid, [])
+    hist.append(f"{role}: {txt}")
+    CHAT_MEMORY[uid] = list(itertools.islice(reversed(hist), 0, 12))[::-1]
 
 def col(row, idx):
     return next(itertools.islice(row, idx, idx + 1), "")
@@ -108,6 +114,7 @@ def write_rows(sheet, rows):
         except Exception:
             return False
 # === [PART 1/3] END ===
+
 
 # === [PART 2/3] START ===
 CF_PROMPT = """你係專業公司行政秘書（管理 CF record 資料庫）。嚴格輸出純 JSON（不加任何多餘解釋文字）：
@@ -217,44 +224,52 @@ def process_message(user_id, text, img_b64_list=None):
     cur_date, cur_time = hk_now.strftime("%Y-%m-%d"), hk_now.strftime("%H:%M")
     clean_cmd = text.strip().lower()
 
+    if clean_cmd in ["新話題", "重置", "clear", "reset"]:
+        PENDING_ACTIONS.pop(user_id, None)
+        CHAT_MEMORY.pop(user_id, None)
+        return "🧹 已清空對話記憶，請開始新話題！"
+
     if clean_cmd in ["ok", "確認", "好", "入表", "yes"]:
         pending = PENDING_ACTIONS.pop(user_id, None)
         if not pending:
             return "目前沒有待確認的公司紀錄。"
         ok_all = all(write_rows(w.get("sheet"), w.get("rows", [])) for w in pending if w.get("sheet") and w.get("rows"))
-        return "✅ 已正式寫入 CF record！" if ok_all else "⚠️ 寫入失敗，請檢查連線。"
+        rep = "✅ 已正式寫入 CF record！" if ok_all else "⚠️ 寫入失敗，請檢查連線。"
+        push_chat(user_id, "用戶", text)
+        push_chat(user_id, "秘書", rep)
+        return rep
 
     if clean_cmd in ["取消", "cancel", "唔要", "放棄"]:
         PENDING_ACTIONS.pop(user_id, None)
-        return "🗑️ 已取消該筆待確認紀錄。"
+        rep = "🗑️ 已取消該筆待確認紀錄。"
+        push_chat(user_id, "用戶", text)
+        push_chat(user_id, "秘書", rep)
+        return rep
 
     history = read_all_sheets()
     stats = compute_cf_stats(history, cur_date)
     recent_3d = filter_recent_3_days(history, cur_date)
     prev_pending = PENDING_ACTIONS.get(user_id)
+    recent_chat = "\n".join(CHAT_MEMORY.get(user_id, []))
 
-    prompt = f"香港時間：{cur_date} {cur_time}\n全表背景統計：{json.dumps(stats, ensure_ascii=False)}\n最近3日明細：{json.dumps(recent_3d, ensure_ascii=False)}\n待確認上文：{json.dumps(prev_pending, ensure_ascii=False)}\n用戶輸入：{text}"
+    prompt = f"香港時間：{cur_date} {cur_time}\n全表背景統計：{json.dumps(stats, ensure_ascii=False)}\n最近3日明細：{json.dumps(recent_3d, ensure_ascii=False)}\n最近對話上下文：\n{recent_chat}\n待確認上文：{json.dumps(prev_pending, ensure_ascii=False)}\n用戶輸入：{text}"
     res = call_ai(prompt, img_b64_list)
 
     if res.get("intent") == "query":
-        return res.get("reply") or "收到。"
-
-    missing = res.get("missing") or []
-    if missing:
+        rep = res.get("reply") or "收到。"
+    elif res.get("missing"):
         PENDING_ACTIONS[user_id] = res.get("writes") or prev_pending
-        return f"⚠️ 請先補充以下資料再入表：**{ '、'.join(missing) }**"
+        rep = f"⚠️ 請先補充以下資料再入表：**{ '、'.join(res.get('missing')) }**"
+    elif res.get("writes"):
+        PENDING_ACTIONS[user_id] = res.get("writes")
+        pretty = [f"• [{w.get('sheet','')}] " + " | ".join(str(x) for x in r) for w in res.get("writes") for r in w.get("rows", [])]
+        rep = f"📋 **預覽確認（回覆 `ok` 入表 / `取消`）：**\n" + "\n".join(pretty)
+    else:
+        rep = res.get("reply") or "⚠️ 無法識別內容，請補充維修或採購細節。"
 
-    writes = res.get("writes") or []
-    if writes:
-        PENDING_ACTIONS[user_id] = writes
-        pretty = []
-        for w in writes:
-            sh = w.get("sheet", "")
-            for r in w.get("rows", []):
-                pretty.append(f"• [{sh}] " + " | ".join(str(x) for x in r))
-        return f"📋 **預覽確認（回覆 `ok` 入表 / `取消`）：**\n" + "\n".join(pretty)
-
-    return res.get("reply") or "⚠️ 無法識別內容，請補充維修或採購細節。"
+    push_chat(user_id, "用戶", text or "[相片]")
+    push_chat(user_id, "秘書", rep)
+    return rep
 # === [PART 2/3] END ===
 
 # === [PART 3/3] START ===
@@ -275,6 +290,7 @@ button.send{background:#059669;color:#fff;border:none;padding:0 16px;border-radi
 <div class="card"><div class="val" id="t_fee">--</div><div class="lbl">本月總支出($)</div></div></div>
 <div id="chat"><div class="msg b">💼 公司行政秘書已就緒（CF record），直接輸入維修／採購紀錄，或按 📷 上傳單據／現場相片（最多 3 張）。</div></div>
 <div class="bar"><button class="chip" onclick="quick('ok')">✅ ok 入表</button><button class="chip" onclick="quick('取消')">🗑️ 取消</button>
+<button class="chip" onclick="quick('新話題')">🧹 新話題</button>
 <button class="chip" onclick="quick('本月維修同採購各用咗幾多錢？')">📊 本月統計</button><button class="chip" onclick="quick('邊個部門本月最多維修費？')">🔧 部門維修分析</button></div>
 <div class="inp"><label style="font-size:22px;cursor:pointer;padding:4px">📷<input type="file" id="imgs" accept="image/*" multiple hidden></label>
 <input type="text" id="txt" placeholder="輸入維修、採購或查詢..." onkeydown="if(event.key==='Enter')sendMsg()">
