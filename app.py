@@ -300,86 +300,105 @@ def process_message(user_id, text, img_b64_list=None):
     return rep
 # === [PART 2/3] END ===
 
+
+
 # === [PART 3/3] START ===
-HTML_CF_APP = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Company Secretary | CF record</title><style>
+HTML_CF = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>秘書</title><style>
 body{font-family:-apple-system,sans-serif;background:#0f172a;color:#f8fafc;margin:0;display:flex;flex-direction:column;height:100vh}
-.top{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px;background:#1e293b;text-align:center}
-.card{background:#0f172a;padding:8px;border-radius:10px}.val{font-size:15px;font-weight:700;color:#34d399}.lbl{font-size:11px;color:#94a3b8}
 #chat{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
 .msg{max-width:85%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;line-height:1.45;font-size:15px}
-.u{align-self:flex-end;background:#059669}.b{align-self:flex-start;background:#1e293b;border:1px solid #334155}
-.bar{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#1e293b}.chip{background:#334155;color:#fff;border:none;padding:6px 12px;border-radius:16px;font-size:13px;white-space:nowrap}
+.u{align-self:flex-end;background:#0284c7}.b{align-self:flex-start;background:#1e293b;border:1px solid #334155}
+.bar{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#1e293b}.chip{background:#334155;color:#fff;border:none;padding:6px 12px;border-radius:16px;font-size:13px;white-space:nowrap;cursor:pointer}
+.chip.tpl{background:#0369a1;color:#fff;font-weight:600}
 .inp{display:flex;gap:8px;padding:10px;background:#1e293b}input[type=text]{flex:1;padding:10px;border-radius:20px;border:none;background:#0f172a;color:#fff;font-size:15px}
-button.send{background:#059669;color:#fff;border:none;padding:0 16px;border-radius:20px;font-weight:600}
+button.send{background:#0284c7;color:#fff;border:none;padding:0 16px;border-radius:20px;font-weight:600;cursor:pointer}
 </style></head><body>
-<div class="top"><div class="card"><div class="val" id="m_fee">--</div><div class="lbl">本月維修($)</div></div>
-<div class="card"><div class="val" id="p_fee">--</div><div class="lbl">本月採購($)</div></div>
-<div class="card"><div class="val" id="t_fee">--</div><div class="lbl">本月總支出($)</div></div></div>
-<div id="chat"><div class="msg b">💼 公司行政秘書已就緒（CF record），直接輸入維修／採購紀錄，或按 📷 上傳單據／現場相片（最多 3 張）。</div></div>
-<div class="bar"><button class="chip" onclick="quick('ok')">✅ ok 入表</button><button class="chip" onclick="quick('取消')">🗑️ 取消</button>
-<button class="chip" onclick="quick('新話題')">🧹 新話題</button>
-<button class="chip" onclick="quick('本月維修同採購各用咗幾多錢？')">📊 本月統計</button><button class="chip" onclick="quick('邊個部門本月最多維修費？')">🔧 部門維修分析</button></div>
+<div id="chat"><div class="msg b">🏢 秘書已就緒（CF record），直接輸入維修／採購紀錄，或按 📷 上傳單據／現場相片（最多 3 張）。</div></div>
+<div class="bar">
+  <button class="chip" onclick="quick('ok')">✅ 確認</button>
+  <button class="chip" onclick="quick('取消')">🗑️ 取消</button>
+  <button class="chip tpl" onclick="fillMaintTpl()">🔧 維修</button>
+  <button class="chip" onclick="quick('新話題')">🧹 新話題</button>
+  <button class="chip" onclick="quick('本月維修同採購各用咗幾多錢？')">📊 本月統計</button>
+  <button class="chip" onclick="quick('按部門列出本月維修明細')">🛠️ 部門維修分析</button>
+</div>
 <div class="inp"><label style="font-size:22px;cursor:pointer;padding:4px">📷<input type="file" id="imgs" accept="image/*" multiple hidden></label>
 <input type="text" id="txt" placeholder="輸入維修、採購或查詢..." onkeydown="if(event.key==='Enter')sendMsg()">
 <button class="send" onclick="sendMsg()">發送</button></div>
 <script>
-let pin = localStorage.getItem("cf_sec_pin") || prompt("請輸入公司秘書專屬 PIN 密碼：");
-if(pin) localStorage.setItem("cf_sec_pin", pin);
-async function loadDash(){
-  let r = await fetch("/api/dash?pin="+encodeURIComponent(pin));
-  if(r.status===401){localStorage.removeItem("cf_sec_pin");alert("PIN 錯誤");location.reload();return;}
-  let d = await r.json();
-  document.getElementById("m_fee").innerText = "$" + d.maint_month;
-  document.getElementById("p_fee").innerText = "$" + d.purch_month;
-  document.getElementById("t_fee").innerText = "$" + d.total_month;
+let pin = localStorage.getItem("cf_pin") || prompt("請輸入公司秘書 PIN 密碼：");
+if(pin) localStorage.setItem("cf_pin", pin);
+
+async function checkAuth(){
+  try {
+    let r = await fetch("/api/cf_dash?pin=" + encodeURIComponent(pin || ""));
+    if(r.status === 401){ localStorage.removeItem("cf_pin"); alert("PIN 錯誤"); location.reload(); }
+  } catch(e) {}
 }
-function addMsg(t, cls){let d=document.createElement("div");d.className="msg "+cls;d.innerText=t;let c=document.getElementById("chat");c.appendChild(d);c.scrollTop=c.scrollHeight;}
+
+function addMsg(t, cls){let d=document.createElement("div");d.className="msg "+cls;d.innerText=t;let c=document.getElementById("chat");c.appendChild(d);c.scrollTop=c.scrollHeight;return d;}
 function quick(t){document.getElementById("txt").value=t;sendMsg();}
+
+function fillMaintTpl(){
+  let inp = document.getElementById("txt");
+  inp.value = "維修部門： | 項目： | 位置： | 費用： | 維修人：";
+  inp.focus();
+}
+
 async function sendMsg(){
-  let inp=document.getElementById("txt"), files=document.getElementById("imgs").files, val=inp.value.trim();
-  if(!val && !files.length) return;
-  addMsg(val || "[傳送 "+files.length+" 張相片]", "u"); inp.value="";
+  let inp=document.getElementById("txt"), fileList=Array.from(document.getElementById("imgs").files).slice(0,3), val=inp.value.trim();
+  if(!val && fileList.length === 0) return;
+  addMsg(val || "[傳送 " + fileList.length + " 張單據/相片]", "u"); inp.value="";
   let imgs=[];
-  for(let i=0;i<Math.min(files.length,3);i++){
-    let b64 = await new Promise(res=>{let fr=new FileReader();fr.onload=()=>res(fr.result.split(",").pop());fr.readAsDataURL(files.item(i));});
-    imgs.push({mime: files.item(i).type || "image/jpeg", data: b64});
+  for(const f of fileList){
+    let b64 = await new Promise(res=>{let fr=new FileReader();fr.onload=()=>res(fr.result.split(",").pop());fr.readAsDataURL(f);});
+    imgs.push({mime: f.type || "image/jpeg", data: b64});
   }
   document.getElementById("imgs").value="";
-  let r = await fetch("/api/chat", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin,text:val,images:imgs})});
-  let d = await r.json(); addMsg(d.reply || d.error, "b"); loadDash();
+  let waitMsg = addMsg("⏳ 處理中...", "b");
+  try {
+    let r = await fetch("/api/cf_chat", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin,text:val,imgs:imgs})});
+    let d = await r.json();
+    waitMsg.remove();
+    addMsg(d.reply || d.error || "無回應", "b");
+  } catch(e) {
+    waitMsg.innerText = "⚠️ 連線錯誤：" + e.message;
+  }
 }
-loadDash();
+
+checkAuth();
 </script></body></html>"""
 
+def check_pin(req_pin):
+    expected = str(APP_PIN or "").strip()
+    return (not expected) or (str(req_pin or "").strip() == expected)
+
 @app.route("/")
-def home():
-    return "Company Secretary API Online", 200
-
 @app.route("/app")
-def web_app():
-    return render_template_string(HTML_CF_APP)
+def index():
+    return render_template_string(HTML_CF)
 
-@app.route("/api/dash")
-def api_dash():
-    if request.args.get("pin") != APP_PIN:
+@app.route("/api/cf_dash")
+def api_cf_dash():
+    if not check_pin(request.args.get("pin")):
         return jsonify({"error": "Unauthorized"}), 401
-    cur_date = datetime.now(pytz.timezone("Asia/Hong_Kong")).strftime("%Y-%m-%d")
-    return jsonify(compute_cf_stats(read_all_sheets(), cur_date))
+    return jsonify({"ok": True})
 
-@app.route("/api/chat", methods=["POST"])
-def api_chat():
-    body = request.json or {}
-    if body.get("pin") != APP_PIN:
-        return jsonify({"error": "PIN 錯誤"}), 401
+@app.route("/api/cf_chat", methods=["POST"])
+def api_cf_chat():
+    data = request.get_json(silent=True) or {}
+    if not check_pin(data.get("pin")):
+        return jsonify({"error": "Unauthorized"}), 401
     try:
-        rep = process_message("cf_user", body.get("text", ""), body.get("images", []))
+        rep = process_message("cf_admin", data.get("text", ""), data.get("imgs", []))
         return jsonify({"reply": rep})
     except Exception as e:
-        return jsonify({"reply": f"⚠️ {str(e)}"})
+        return jsonify({"reply": f"⚠️ 系統錯誤：{str(e)}"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 # === [PART 3/3] END ===
 
 
