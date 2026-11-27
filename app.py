@@ -31,7 +31,7 @@ def norm_date(val):
             return dt.strftime("%Y-%m-%d")
         except Exception:
             pass
-    m = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+    m = re.search(r"(\d{4})[-/\s](\d{1,2})[-/\s](\d{1,2})", s)
     return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else s
 
 def parse_num(val):
@@ -56,17 +56,43 @@ def read_all_sheets():
     with ThreadPoolExecutor(max_workers=2) as ex:
         return dict(ex.map(fetch_sheet, sheets))
 
-def filter_recent_3_days(history, cur_date):
+def get_all_history_trimmed(history, cur_date):
     try:
-        base_dt = datetime.strptime(cur_date, "%Y-%m-%d")
-        valid_dates = {(base_dt - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)}
+        cutoff = (datetime.strptime(cur_date, "%Y-%m-%d") - timedelta(days=365)).strftime("%Y-%m-%d")
     except Exception:
-        valid_dates = {cur_date}
+        cutoff = "2000-01-01"
     trimmed = {}
     for k, rows in history.items():
-        recent = [r for r in rows if isinstance(r, list) and len(r) > 0 and norm_date(col(r, 0)) in valid_dates]
-        trimmed[k] = list(itertools.islice(reversed(recent), 0, 25))[::-1]
+        valid = []
+        for r in rows:
+            if not isinstance(r, list) or len(r) == 0:
+                continue
+            d_s = norm_date(col(r, 0))
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", d_s) and d_s >= cutoff:
+                rest = list(itertools.islice(r, 1, None))
+                valid.append([d_s] + rest)
+        trimmed[k] = list(itertools.islice(valid, 0, 300))
     return trimmed
+
+def search_history_records(history, query_text):
+    clean_q = re.sub(r"(幾時|邊日|幾號|日期|換過|維修過|買過|採購過|紀錄|記錄|的|嘅|呀|呢|[？?，,。.\s])", " ", query_text).strip().lower()
+    tokens = [t for t in clean_q.split() if len(t) >= 2]
+    if not tokens:
+        return []
+    matches = []
+    for sheet_name, rows in history.items():
+        for r in rows:
+            if not isinstance(r, list) or len(r) < 3:
+                continue
+            d_str = norm_date(col(r, 0))
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", d_str):
+                continue
+            row_str = " | ".join(str(x).strip() for x in r).lower()
+            if any(tok in row_str for tok in tokens):
+                rest = list(itertools.islice(r, 1, None))
+                row_disp = [d_str] + rest
+                matches.append(f"[{sheet_name}] " + " | ".join(str(x).strip() for x in row_disp))
+    return list(itertools.islice(matches, 0, 30))
 
 def compute_cf_stats(history, cur_date):
     cur_month = "".join(itertools.islice(cur_date, 0, 7))
@@ -116,6 +142,7 @@ def write_rows(sheet, rows):
 # === [PART 1/3] END ===
 
 
+
 # === [PART 2/3] START ===
 CF_PROMPT = """你係專業公司行政秘書（管理 CF record 資料庫）。嚴格輸出純 JSON（不加任何多餘解釋文字）：
 {"intent": "record 或 query", "missing": ["漏填必填欄名"], "writes": [{"sheet": "Maintenance 或 Purchasing", "rows": [["欄1", "欄2"]]}], "reply": ""}
@@ -127,7 +154,7 @@ CF_PROMPT = """你係專業公司行政秘書（管理 CF record 資料庫）。
    - 必填欄位：項目、數量、單價、總金額。只要提供「數量＋單價」或「數量＋總金額」，必須自動互相計算補齊另一欄（例如 5 箱每箱 180 -> 數量 5, 單價 180, 總金額 900），絕不列入 missing；若連單價同總金額都無寫，將「單價/總金額」列入 missing。
 3. 若用戶同時報告多項維修或採購（或上傳單據相片包含多項），可於 rows 輸出多列，或同時輸出 Maintenance 與 Purchasing 兩張表的 writes。
 4. 若用戶正在補充剛才漏填的資料或修改預覽內容，結合「待確認上文」輸出更新後的完整 writes，並將 missing 設為 []。
-5. 若 intent 為 query（查詢本月維修費、採購開支、各部門統計或行政建議），writes 與 missing 設為 []，reply 用專業簡潔廣東話回答。"""
+5. 若 intent 為 query（查詢過往維修日期、採購歷史、本月開支或行政建議），必須仔細核對「關鍵字搜尋命中紀錄」與「過去365日完整明細」（不分英文大小寫），列出所有符合項目的日期、部門、項目、費用及維修人，用專業簡潔廣東話回答。"""
 
 def get_live_groq_models(g_host, headers, need_vision):
     try:
@@ -248,11 +275,12 @@ def process_message(user_id, text, img_b64_list=None):
 
     history = read_all_sheets()
     stats = compute_cf_stats(history, cur_date)
-    recent_3d = filter_recent_3_days(history, cur_date)
+    all_records = get_all_history_trimmed(history, cur_date)
+    matched_rows = search_history_records(history, text)
     prev_pending = PENDING_ACTIONS.get(user_id)
     recent_chat = "\n".join(CHAT_MEMORY.get(user_id, []))
 
-    prompt = f"香港時間：{cur_date} {cur_time}\n全表背景統計：{json.dumps(stats, ensure_ascii=False)}\n最近3日明細：{json.dumps(recent_3d, ensure_ascii=False)}\n最近對話上下文：\n{recent_chat}\n待確認上文：{json.dumps(prev_pending, ensure_ascii=False)}\n用戶輸入：{text}"
+    prompt = f"香港時間：{cur_date} {cur_time}\n全表背景統計：{json.dumps(stats, ensure_ascii=False)}\n關鍵字搜尋命中紀錄：{json.dumps(matched_rows, ensure_ascii=False)}\n過去365日完整明細：{json.dumps(all_records, ensure_ascii=False)}\n最近對話上下文：\n{recent_chat}\n待確認上文：{json.dumps(prev_pending, ensure_ascii=False)}\n用戶輸入：{text}"
     res = call_ai(prompt, img_b64_list)
 
     if res.get("intent") == "query":
