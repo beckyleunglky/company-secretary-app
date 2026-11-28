@@ -305,6 +305,13 @@ def process_message(user_id, text, img_b64_list=None):
 
 # === [PART 3/3] START ===
 HTML_CF = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#334155">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="秘書">
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="manifest" href="/manifest.json">
 <title>秘書</title><style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;width:100%;height:100dvh;max-height:100dvh;overflow:hidden;position:fixed;inset:0;font-family:-apple-system,sans-serif;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column}
@@ -372,9 +379,50 @@ async function sendMsg(){
 checkAuth();
 </script></body></html>"""
 
+def build_cf_png():
+    import zlib, struct
+    w, h = 192, 192
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)
+        for x in range(w):
+            is_fg = False
+            if 42 <= y <= 54 and 74 <= x <= 118:
+                is_fg = True
+            elif 54 < y <= 148 and 54 <= x <= 138:
+                if (76 <= y <= 84 and 68 <= x <= 124) or (98 <= y <= 106 and 68 <= x <= 124) or (120 <= y <= 128 and 68 <= x <= 106):
+                    is_fg = False
+                else:
+                    is_fg = True
+            if is_fg:
+                raw.extend((253, 186, 116, 255))
+            else:
+                raw.extend((51, 65, 85, 255))
+    def chunk(tag, data):
+        return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
+    ihdr = struct.pack("!IIBBBBB", w, h, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+
 def check_pin(req_pin):
     expected = str(APP_PIN or "").strip()
     return (not expected) or (str(req_pin or "").strip() == expected)
+
+@app.route("/icon.png")
+def cf_icon():
+    from flask import Response
+    return Response(build_cf_png(), mimetype="image/png")
+
+@app.route("/manifest.json")
+def cf_manifest():
+    return jsonify({
+        "name": "秘書",
+        "short_name": "秘書",
+        "start_url": "/app",
+        "display": "standalone",
+        "background_color": "#0f172a",
+        "theme_color": "#334155",
+        "icons": [{"src": "/icon.png", "sizes": "192x192", "type": "image/png"}]
+    })
 
 @app.route("/")
 @app.route("/app")
