@@ -301,11 +301,9 @@ def process_message(user_id, text, img_b64_list=None):
 # === [PART 2/3] END ===
 
 
-
-
 # === [PART 3/3] START ===
 HTML_CF = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#334155">
+<meta name="theme-color" content="#78350f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="秘書">
@@ -383,21 +381,26 @@ def build_cf_png():
     import zlib, struct
     w, h = 192, 192
     raw = bytearray()
+    binders = [(34, 70), (78, 114), (122, 158)]
     for y in range(h):
         raw.append(0)
         for x in range(w):
-            is_fg = False
-            if 42 <= y <= 54 and 74 <= x <= 118:
-                is_fg = True
-            elif 54 < y <= 148 and 54 <= x <= 138:
-                if (76 <= y <= 84 and 68 <= x <= 124) or (98 <= y <= 106 and 68 <= x <= 124) or (120 <= y <= 128 and 68 <= x <= 106):
-                    is_fg = False
-                else:
-                    is_fg = True
-            if is_fg:
-                raw.extend((253, 186, 116, 255))
+            is_binder = False
+            if 28 <= y <= 164:
+                for bx1, bx2 in binders:
+                    if bx1 <= x <= bx2:
+                        is_binder = True
+                        cx = (bx1 + bx2) // 2
+                        if 44 <= y <= 98 and (bx1 + 6) <= x <= (bx2 - 6):
+                            if not ((52 <= y <= 57 or 68 <= y <= 73) and (bx1 + 10) <= x <= (bx2 - 10)):
+                                is_binder = False
+                        elif (x - cx) ** 2 + (y - 140) ** 2 <= 81:
+                            is_binder = False
+                        break
+            if is_binder:
+                raw.extend((217, 119, 6, 255))
             else:
-                raw.extend((51, 65, 85, 255))
+                raw.extend((255, 251, 235, 255))
     def chunk(tag, data):
         return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
     ihdr = struct.pack("!IIBBBBB", w, h, 8, 6, 0, 0, 0)
@@ -420,7 +423,7 @@ def cf_manifest():
         "start_url": "/app",
         "display": "standalone",
         "background_color": "#0f172a",
-        "theme_color": "#334155",
+        "theme_color": "#78350f",
         "icons": [{"src": "/icon.png", "sizes": "192x192", "type": "image/png"}]
     })
 
@@ -450,3 +453,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 # === [PART 3/3] END ===
+
+
