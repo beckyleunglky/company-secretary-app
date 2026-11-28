@@ -301,9 +301,10 @@ def process_message(user_id, text, img_b64_list=None):
 # === [PART 2/3] END ===
 
 
+
 # === [PART 3/3] START ===
 HTML_CF = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#78350f">
+<meta name="theme-color" content="#f472b6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="秘書">
@@ -378,29 +379,46 @@ checkAuth();
 </script></body></html>"""
 
 def build_cf_png():
-    import zlib, struct
+    import zlib, struct, math
     w, h = 192, 192
+    cx, cy = 112.0, 82.0
+    pts = []
+    for i in range(10):
+        ang = math.radians(-90 + i * 36)
+        r = 56.0 if i % 2 == 0 else 25.0
+        pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
+    gems = [(cx + 42.0 * math.cos(math.radians(-90 + k * 72)), cy + 42.0 * math.sin(math.radians(-90 + k * 72))) for k in range(5)]
+
+    def seg_dist(px, py, x1, y1, x2, y2):
+        dx, dy = x2 - x1, y2 - y1
+        l2 = dx * dx + dy * dy
+        t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / l2)) if l2 > 0 else 0.0
+        return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+
     raw = bytearray()
-    binders = [(34, 70), (78, 114), (122, 158)]
     for y in range(h):
         raw.append(0)
         for x in range(w):
-            is_binder = False
-            if 28 <= y <= 164:
-                for bx1, bx2 in binders:
-                    if bx1 <= x <= bx2:
-                        is_binder = True
-                        cx = (bx1 + bx2) // 2
-                        if 44 <= y <= 98 and (bx1 + 6) <= x <= (bx2 - 6):
-                            if not ((52 <= y <= 57 or 68 <= y <= 73) and (bx1 + 10) <= x <= (bx2 - 10)):
-                                is_binder = False
-                        elif (x - cx) ** 2 + (y - 140) ** 2 <= 81:
-                            is_binder = False
-                        break
-            if is_binder:
-                raw.extend((217, 119, 6, 255))
-            else:
-                raw.extend((255, 251, 235, 255))
+            col_rgb = (255, 251, 235)
+            min_star = min(seg_dist(x, y, pts[i][0], pts[i][1], pts[(i + 1) % 10][0], pts[(i + 1) % 10][1]) for i in range(10))
+            if min_star <= 12.5:
+                col_rgb = (244, 154, 194)
+            for gx, gy in gems:
+                if math.hypot(x - gx, y - gy) <= 5.2:
+                    col_rgb = (239, 68, 108)
+            if seg_dist(x, y, 76, 128, 34, 152) <= 13.5 or seg_dist(x, y, 68, 144, 48, 160) <= 10.5:
+                col_rgb = (244, 154, 194)
+            if seg_dist(x, y, 70, 134, 42, 148) <= 1.8 or seg_dist(x, y, 74, 143, 50, 156) <= 1.8:
+                col_rgb = (134, 239, 172)
+            for sx, sy in [(32, 148), (44, 157), (56, 163)]:
+                if math.hypot(x - sx, y - sy) <= 2.6:
+                    col_rgb = (253, 224, 71)
+            hx = (x - 82.0) / 21.0
+            hy = -(y - 122.0) / 21.0
+            if (hx * hx + hy * hy - 1.0) ** 3 - hx * hx * (hy ** 3) <= 0.0:
+                col_rgb = (253, 224, 71)
+            raw.extend((col_rgb[0], col_rgb[1], col_rgb[2], 255))
+
     def chunk(tag, data):
         return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
     ihdr = struct.pack("!IIBBBBB", w, h, 8, 6, 0, 0, 0)
@@ -423,7 +441,7 @@ def cf_manifest():
         "start_url": "/app",
         "display": "standalone",
         "background_color": "#0f172a",
-        "theme_color": "#78350f",
+        "theme_color": "#f472b6",
         "icons": [{"src": "/icon.png", "sizes": "192x192", "type": "image/png"}]
     })
 
@@ -453,5 +471,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 # === [PART 3/3] END ===
+
+
 
 
