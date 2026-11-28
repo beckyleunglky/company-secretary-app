@@ -302,17 +302,19 @@ def process_message(user_id, text, img_b64_list=None):
 
 
 
+
 # === [PART 3/3] START ===
-HTML_CF = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+HTML_CF = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>秘書</title><style>
-body{font-family:-apple-system,sans-serif;background:#0f172a;color:#f8fafc;margin:0;display:flex;flex-direction:column;height:100vh}
-#chat{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100dvh;max-height:100dvh;overflow:hidden;position:fixed;inset:0;font-family:-apple-system,sans-serif;background:#0f172a;color:#f8fafc;display:flex;flex-direction:column}
+#chat{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px;display:flex;flex-direction:column;gap:10px}
 .msg{max-width:85%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;line-height:1.45;font-size:15px}
 .u{align-self:flex-end;background:#0284c7}.b{align-self:flex-start;background:#1e293b;border:1px solid #334155}
-.bar{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#1e293b}.chip{background:#334155;color:#fff;border:none;padding:6px 12px;border-radius:16px;font-size:13px;white-space:nowrap;cursor:pointer}
+.bar{flex-shrink:0;display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#1e293b}.chip{background:#334155;color:#fff;border:none;padding:6px 12px;border-radius:16px;font-size:13px;white-space:nowrap;cursor:pointer}
 .chip.tpl{background:#0369a1;color:#fff;font-weight:600}
-.inp{display:flex;gap:8px;padding:10px;background:#1e293b}input[type=text]{flex:1;padding:10px;border-radius:20px;border:none;background:#0f172a;color:#fff;font-size:15px}
-button.send{background:#0284c7;color:#fff;border:none;padding:0 16px;border-radius:20px;font-weight:600;cursor:pointer}
+.inp{flex-shrink:0;display:flex;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:#1e293b;align-items:center}input[type=text]{flex:1;min-width:0;padding:10px 12px;border-radius:20px;border:none;background:#0f172a;color:#fff;font-size:15px}
+button.send{flex-shrink:0;background:#0284c7;color:#fff;border:none;padding:10px 16px;border-radius:20px;font-weight:600;cursor:pointer}
 </style></head><body>
 <div id="chat"><div class="msg b">🏢 秘書已就緒（CF record），直接輸入維修／採購紀錄，或按 📷 上傳單據／現場相片（最多 3 張）。</div></div>
 <div class="bar">
@@ -323,7 +325,7 @@ button.send{background:#0284c7;color:#fff;border:none;padding:0 16px;border-radi
   <button class="chip" onclick="quick('本月維修同採購各用咗幾多錢？')">📊 本月統計</button>
   <button class="chip" onclick="quick('按部門列出本月維修明細')">🛠️ 部門維修分析</button>
 </div>
-<div class="inp"><label style="font-size:22px;cursor:pointer;padding:4px">📷<input type="file" id="imgs" accept="image/*" multiple hidden></label>
+<div class="inp"><label style="font-size:22px;cursor:pointer;padding:2px 4px;flex-shrink:0">📷<input type="file" id="imgs" accept="image/*" multiple hidden></label>
 <input type="text" id="txt" placeholder="輸入維修、採購或查詢..." onkeydown="if(event.key==='Enter')sendMsg()">
 <button class="send" onclick="sendMsg()">發送</button></div>
 <script>
@@ -400,6 +402,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 # === [PART 3/3] END ===
-
-
-
